@@ -14,7 +14,6 @@ export default {
       return handleVerify(request, env);
     }
 
-    // Handle CORS preflight for verify endpoint
     if (request.method === 'OPTIONS' && url.pathname === '/api/auth/verify') {
       return new Response(null, {
         status: 204,
@@ -35,7 +34,7 @@ export default {
     });
 
     const response = await fetch(pagesRequest);
-    return addSecurityHeaders(new Response(response.body, response), url.origin);
+    return addSecurityHeaders(new Response(response.body, response));
   }
 };
 
@@ -129,14 +128,18 @@ async function verifyJWT(token, secret) {
 }
 
 // ── Security Headers ─────────────────────────────────────────────────────
-function addSecurityHeaders(response, origin) {
+function addSecurityHeaders(response) {
   const newHeaders = new Headers(response.headers);
+
+  // Allow embedding from incadence.com AND daiichisankyo.com
   newHeaders.set('Content-Security-Policy',
-    "frame-ancestors 'self' https://*.incadence.com https://incadence.com"
+    "frame-ancestors 'self' https://*.incadence.com https://incadence.com https://*.daiichisankyo.com https://daiichisankyo.com"
   );
+
   newHeaders.delete('X-Frame-Options');
   newHeaders.set('X-Content-Type-Options', 'nosniff');
   newHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
