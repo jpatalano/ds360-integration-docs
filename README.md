@@ -40,7 +40,7 @@ ds360-integration-docs/
 
 ## JWT Contract
 
-Tokens are **HS256** JWTs signed with `MSD_JWT_SECRET`.
+Tokens are **HS256** JWTs signed with `DS360_JWT_SECRET`.
 
 | Claim | Type | Required | Notes |
 |-------|------|----------|-------|
@@ -58,7 +58,7 @@ const token = jwt.sign(
     role: 'viewer',         // or 'admin'
     exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24h
   },
-  process.env.MSD_JWT_SECRET,
+  process.env.DS360_JWT_SECRET,
   { algorithm: 'HS256' }
 );
 
@@ -72,7 +72,7 @@ import jwt, time, os
 
 token = jwt.encode(
     {'sub': user.email, 'role': 'viewer', 'exp': int(time.time()) + 86400},
-    os.environ['MSD_JWT_SECRET'],
+    os.environ['DS360_JWT_SECRET'],
     algorithm='HS256'
 )
 docs_url = f'https://docs.incadence.com/ds360/integrations?token={token}'
@@ -121,7 +121,7 @@ wrangler login
 
 # Set the JWT secret (never commit this)
 cd worker
-wrangler secret put MSD_JWT_SECRET
+wrangler secret put DS360_JWT_SECRET
 # Paste your secret when prompted
 
 # Deploy the worker
@@ -141,15 +141,15 @@ In **Cloudflare Dashboard → Workers & Pages → your worker → Triggers**:
 ## Rotating the Secret
 
 1. Generate a new secret: `openssl rand -hex 32`
-2. Update in Cloudflare: `wrangler secret put MSD_JWT_SECRET`
-3. Update `MSD_JWT_SECRET` in your Event Cadence app environment
+2. Update in Cloudflare: `wrangler secret put DS360_JWT_SECRET`
+3. Update `DS360_JWT_SECRET` in your Event Cadence app environment
 4. No redeployment of the static files needed — the Worker picks up the new secret immediately
 
 ---
 
 ## Security Notes
 
-- The JWT secret (`MSD_JWT_SECRET`) must **never** be committed to this repo
+- The JWT secret (`DS360_JWT_SECRET`) must **never** be committed to this repo
 - The Worker validates the signature server-side — the secret is never exposed to the browser
 - Tokens are stored in `sessionStorage` after validation (cleared when tab closes)
 - The `frame-ancestors` CSP header restricts embedding to `*.incadence.com` only
