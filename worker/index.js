@@ -57,7 +57,7 @@ async function handleVerify(request, env) {
       });
     }
 
-    const secret = env.MSD_JWT_SECRET;
+    const secret = env.DS360_JWT_SECRET;
     if (!secret) {
       return new Response(JSON.stringify({ valid: false, error: 'server_config_error' }), {
         status: 500, headers: corsHeaders
