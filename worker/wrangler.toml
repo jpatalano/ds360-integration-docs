@@ -8,8 +8,8 @@ compatibility_date = "2024-01-01"
 pattern = "docs.incadence.com/*"
 zone_name = "incadence.com"
 
-# Environment variables — set MSD_JWT_SECRET via Cloudflare dashboard
+# Environment variables — set DS360_JWT_SECRET via Cloudflare dashboard
 # Never put the actual secret value here
-# Run: wrangler secret put MSD_JWT_SECRET
+# Run: wrangler secret put DS360_JWT_SECRET
 [vars]
 # Non-secret config vars go here if needed
