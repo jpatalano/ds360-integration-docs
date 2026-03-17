@@ -1,13 +1,9 @@
 /**
  * DS360 Integration Docs — Cloudflare Worker
- * 
- * Handles:
- *   POST /api/auth/verify  — validates HS256 JWT, returns { valid, sub, role }
- *   GET  /*                — serves static files from Pages with iframe-friendly headers
- * 
- * Environment variables (set in Cloudflare dashboard):
- *   MSD_JWT_SECRET  — shared secret used to sign JWTs (HS256)
+ * Handles JWT verification and proxies static content from Pages
  */
+
+const PAGES_URL = 'https://ds360-integration-docs.pages.dev';
 
 export default {
   async fetch(request, env) {
@@ -18,9 +14,28 @@ export default {
       return handleVerify(request, env);
     }
 
-    // ── Static file passthrough with security headers ────────────────────
-    const response = await fetch(request);
-    return addSecurityHeaders(response);
+    // Handle CORS preflight for verify endpoint
+    if (request.method === 'OPTIONS' && url.pathname === '/api/auth/verify') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      });
+    }
+
+    // ── Static file proxy to Pages ───────────────────────────────────────
+    const pagesRequest = new Request(PAGES_URL + url.pathname + url.search, {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
+      redirect: 'follow',
+    });
+
+    const response = await fetch(pagesRequest);
+    return addSecurityHeaders(new Response(response.body, response), url.origin);
   }
 };
 
@@ -32,11 +47,6 @@ async function handleVerify(request, env) {
     'Access-Control-Allow-Headers': 'Content-Type',
     'Content-Type': 'application/json',
   };
-
-  // Handle CORS preflight
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
 
   try {
     const body = await request.json();
@@ -50,13 +60,11 @@ async function handleVerify(request, env) {
 
     const secret = env.MSD_JWT_SECRET;
     if (!secret) {
-      console.error('MSD_JWT_SECRET environment variable is not set');
       return new Response(JSON.stringify({ valid: false, error: 'server_config_error' }), {
         status: 500, headers: corsHeaders
       });
     }
 
-    // Decode and verify the JWT
     const result = await verifyJWT(token, secret);
 
     if (!result.valid) {
@@ -86,11 +94,9 @@ async function verifyJWT(token, secret) {
 
     const [headerB64, payloadB64, sigB64] = parts;
 
-    // Decode header and verify algorithm
     const header = JSON.parse(base64UrlDecode(headerB64));
     if (header.alg !== 'HS256') return { valid: false, error: 'wrong_algorithm' };
 
-    // Import the secret key
     const enc = new TextEncoder();
     const key = await crypto.subtle.importKey(
       'raw', enc.encode(secret),
@@ -98,58 +104,39 @@ async function verifyJWT(token, secret) {
       false, ['verify']
     );
 
-    // Verify signature
     const signingInput = `${headerB64}.${payloadB64}`;
     const sigBytes = base64UrlToBytes(sigB64);
-    const valid = await crypto.subtle.verify(
-      'HMAC', key,
-      sigBytes,
-      enc.encode(signingInput)
-    );
+    const valid = await crypto.subtle.verify('HMAC', key, sigBytes, enc.encode(signingInput));
 
     if (!valid) return { valid: false, error: 'invalid_signature' };
 
-    // Decode payload
     const payload = JSON.parse(base64UrlDecode(payloadB64));
 
-    // Check required claims
     if (!payload.sub) return { valid: false, error: 'missing_sub' };
     if (!payload.exp) return { valid: false, error: 'missing_exp' };
 
-    // Check expiry
     const now = Math.floor(Date.now() / 1000);
     if (now > payload.exp) return { valid: false, error: 'token_expired' };
 
-    // Validate role if present
     if (payload.role && !['viewer', 'admin'].includes(payload.role)) {
       return { valid: false, error: 'invalid_role' };
     }
 
     return { valid: true, payload };
-
   } catch (err) {
     return { valid: false, error: 'decode_error' };
   }
 }
 
-// ── Security Headers (iframe-friendly) ──────────────────────────────────
-function addSecurityHeaders(response) {
+// ── Security Headers ─────────────────────────────────────────────────────
+function addSecurityHeaders(response, origin) {
   const newHeaders = new Headers(response.headers);
-
-  // Allow embedding in iframes from same origin + your app domain
-  // Update frame-ancestors to match your app's domain
   newHeaders.set('Content-Security-Policy',
     "frame-ancestors 'self' https://*.incadence.com https://incadence.com"
   );
-
-  // Do NOT set X-Frame-Options — it conflicts with CSP frame-ancestors
-  // and is less flexible. CSP is the modern standard.
   newHeaders.delete('X-Frame-Options');
-
-  // Other security headers
   newHeaders.set('X-Content-Type-Options', 'nosniff');
   newHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -159,9 +146,7 @@ function addSecurityHeaders(response) {
 
 // ── Base64url Helpers ────────────────────────────────────────────────────
 function base64UrlDecode(str) {
-  // Convert base64url to base64
   str = str.replace(/-/g, '+').replace(/_/g, '/');
-  // Pad to multiple of 4
   while (str.length % 4) str += '=';
   return atob(str);
 }
